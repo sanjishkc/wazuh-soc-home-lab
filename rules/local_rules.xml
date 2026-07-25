@@ -1,0 +1,50 @@
+<!--
+  Custom Wazuh rules for the SOC Home Lab
+  Location on the manager: /var/ossec/etc/rules/local_rules.xml
+  Author: Sanjish KC
+-->
+<group name="local,windows,sysmon,">
+
+  <!--
+    ==============================================================
+    Custom detection rule
+    ==============================================================
+    Detects base64-encoded PowerShell REGARDLESS of the parent process.
+
+    The built-in rule 92057 only fires when the PARENT process is
+    powershell.exe, and its regex omits the common "-enc" / "-encoded"
+    abbreviations. Attackers routinely launch encoded PowerShell from
+    cmd.exe, Office macros (winword.exe), or wscript.exe -> the stock
+    rule stays silent. This rule closes both gaps.
+  -->
+  <rule id="100100" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)powershell\.exe.+\-\b(encodedcommand|encoded|encode|encod|enco|enc|en|ec|ea|e)\b</field>
+    <description>Encoded PowerShell executed (any parent process, incl. -enc/-encoded) - possible obfuscation [custom]</description>
+    <mitre>
+      <id>T1059.001</id>
+    </mitre>
+  </rule>
+
+  <!--
+    ==============================================================
+    False-positive tuning
+    ==============================================================
+    Silences a CRITICAL (level 15) false positive.
+
+    Rule 92213 ("Executable file dropped in folder commonly used by
+    malware", T1105) fires on every PowerShell execution-policy self-test
+    file (__PSScriptPolicyTest_<random>.<random>.ps1) created in
+    %TEMP%. That is benign, built-in PowerShell behaviour.
+
+    This override silences ONLY that self-test artifact (level 0), while
+    rule 92213 continues to alert at level 15 for any other executable
+    or script dropped in Temp.
+  -->
+  <rule id="100200" level="0">
+    <if_sid>92213</if_sid>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)__PSScriptPolicyTest_</field>
+    <description>Benign PowerShell execution-policy self-test in Temp - tuned FP, rule 92213 stays live for real drops [custom]</description>
+  </rule>
+
+</group>
